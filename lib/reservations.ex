@@ -7,6 +7,8 @@ defmodule Reservations do
   alias Reservations.SegmentTripParser
   alias Reservations.SegmentRoomParser
 
+  @hotel "Hotel"
+
   def process_file(text) do
     lines = String.split(text, ~r{(\r\r|\n|\r)})
 
@@ -23,7 +25,7 @@ defmodule Reservations do
       lines
       |> Enum.filter(&String.starts_with?(&1, "SEGMENT:"))
       |> Enum.map(&String.replace_leading(&1, "SEGMENT: ", ""))
-      |> Enum.map(&parse_segment(String.starts_with?(&1, "Hotel"), &1))
+      |> Enum.map(&parse_segment(String.starts_with?(&1, @hotel), &1))
       |> Enum.sort_by(& &1.start_datetime, NaiveDateTime)
       |> Enum.reverse()
       |> group_segments([], nil, nil, based)
@@ -35,18 +37,20 @@ defmodule Reservations do
   defp expose(trip_list) do
     Enum.map(trip_list, fn {trip, reserves} ->
       IO.puts("TRIP to #{trip}")
-
-      Enum.map(reserves, fn res ->
-        if res.type == "Hotel", do: print_room_line(res), else: print_trip_line(res)
-      end)
-
+      expose_reserves(reserves)
       IO.puts("\r")
+    end)
+  end
+
+  defp expose_reserves(reserves) do
+    Enum.map(reserves, fn res ->
+      if res.type == @hotel, do: print_room_line(res), else: print_trip_line(res)
     end)
   end
 
   defp group_segments([], result_list, _, _, _), do: result_list
 
-  defp group_segments([head | tail], result_list, _, _, based) when length(result_list) == 0 do
+  defp group_segments([head | tail], result_list, _, _, based) when result_list == [] do
     destination = head.destination
 
     group_segments(
@@ -61,11 +65,11 @@ defmodule Reservations do
   defp group_segments([head | tail], result_list, prev_segment_datetime, trip_place, based) do
     if abs(Timex.diff(head.start_datetime, prev_segment_datetime, :day)) <= 7 do
       destination =
-        if abs(Timex.diff(head.end_datetime, prev_segment_datetime, :hours)) <= 24 do
-          trip_place
-        else
-          head.destination
-        end
+        get_destination(
+          abs(Timex.diff(head.end_datetime, prev_segment_datetime, :hours)) <= 24,
+          trip_place,
+          head
+        )
 
       group_segments(
         tail,
@@ -93,6 +97,10 @@ defmodule Reservations do
       _ -> []
     end
   end
+
+  @spec get_destination(boolean, binary, binary) :: binary
+  defp get_destination(true, trip_place, _), do: trip_place
+  defp get_destination(_, _, head), do: head.destination
 
   defp parse_segment(true, segment) do
     case SegmentRoomParser.parse(segment) do
