@@ -1,14 +1,15 @@
 defmodule Reservations do
   @moduledoc """
-  Documentation for `Reservations`.
+  The main module for processing `Reservations`.
   """
 
   alias Reservations.BasedParser
-  alias Reservations.SegmentTripParser
   alias Reservations.SegmentRoomParser
+  alias Reservations.SegmentTripParser
 
   @hotel "Hotel"
 
+  @spec process_file(String.t() | {:error, term()} | :eof | any()) :: any()
   def process_file(text) do
     lines = String.split(text, ~r{(\r\r|\n|\r)})
 
@@ -34,6 +35,7 @@ defmodule Reservations do
     expose(segment_list)
   end
 
+  @spec expose(map) :: any
   defp expose(trip_list) do
     Enum.map(trip_list, fn {trip, reserves} ->
       IO.puts("TRIP to #{trip}")
@@ -42,6 +44,7 @@ defmodule Reservations do
     end)
   end
 
+  @spec expose_reserves(list) :: [any()]
   defp expose_reserves(reserves) do
     Enum.map(reserves, fn res ->
       if res.type == @hotel, do: print_room_line(res), else: print_trip_line(res)
@@ -98,7 +101,7 @@ defmodule Reservations do
     end
   end
 
-  @spec get_destination(boolean, binary, binary) :: binary
+  @spec get_destination(boolean, binary, atom | binary | map) :: binary
   defp get_destination(true, trip_place, _), do: trip_place
   defp get_destination(_, _, head), do: head.destination
 
@@ -112,7 +115,7 @@ defmodule Reservations do
           end_datetime: Timex.parse!(end_date, "{YYYY}-{0M}-{0D}") |> Timex.to_date()
         }
 
-      {:error, _} ->
+      _ ->
         nil
     end
   end
@@ -129,7 +132,7 @@ defmodule Reservations do
           end_datetime: Timex.parse!("#{start_date} #{end_time}", "{YYYY}-{0M}-{0D} {h24}:{m}")
         }
 
-      {:error, _} ->
+      _ ->
         nil
     end
   end

@@ -1,9 +1,12 @@
 defmodule Reservations.CLI do
-  @moduledoc false
+  @moduledoc """
+  It builds an executable file which runs as a normal shell script.
+  """
 
+  @spec main(list) :: term()
   def main(_args) do
-    file_to_string = IO.read(:stdio, :all)
-
-    Reservations.process_file(file_to_string)
+    :stdio
+    |> IO.read(:all)
+    |> Reservations.process_file()
   end
 end

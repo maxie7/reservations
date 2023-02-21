@@ -59,26 +59,49 @@ Take into account the following aspects:
 - You can attach notes explaining the solution and why certain things are included and others are left out. 
 - You may consider two flights to be a connection if there is less than 24 hours difference.
 
-You can reply to the email you received if you have any doubt.
 
-In order to submit your solution, create your own Github repository and send us by email when it is ready.
+## Solution
 
-Thank you very much for your time and good luck!
+There are different approaches could be used to solve the current problem like regular expressions, binary pattern matching or parser combinators. The last one has various libs: `NimbleParsec`, `Combine`, `Ergo`.
+
+We'll use the NimbleParsec because it's simple, fast and pretty well known library in Elixir community.
+
+The idea is to get the input txt file, process it line by line and parse the raw information to structured data in order to manipulate it. When the data is sorted and grouped we just output it.
+
+Elixir uses the `escript` to build executable files which run as a normal shell scrips. Its only dependency is Erlang to be installed in your machine. Elixir is not necessary, since `escript` embeds Elixir into compiled app.
+
+The schema is the following:
+
+`output.txt` -> `elixir escript` -> `output in the necessary format`
+
+The segment sample map (parsed from the text file) will look like this:
+
+```elixir
+%{ type: "Flight" | "Trian" | "Hotel",
+   origin: "XXX",
+   trip: tag to group data (we add it when processing data),
+   start_datetime: ~N[2023-03-02 09:10:00],
+   destination: "YYY" (it's not presented for "Hotel" type'),
+   end_datetime: ~N[2023-03-05 09:10:00] }
+```
 
 ## Installation
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `reservations` to your list of dependencies in `mix.exs`:
 
 ```elixir
-def deps do
-  [
-    {:reservations, "~> 0.1.0"}
-  ]
-end
+mix deps.get
+
+mix escript.build
+
+cat input.txt | ./reservations 
 ```
 
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at <https://hexdocs.pm/reservations>.
+You can just run the last command `cat input.txt | ./reservations` because the compiled file already exists in the repo.
 
+### Timex with escript
+
+If you need to use Timex from within an escript, add `{:tzdata, "~> 0.1.8", override: true}` to your deps, more recent versions of :tzdata are unable to work in an escript because of the need to load ETS table files from priv, and due to the way ETS loads these files, it's not possible to do so.
+
+If your build still throws an error after this, try removing the `_build` and `deps` folder. Then execute `mix deps.unlock tzdata` and `mix deps.get`.
+
+P.S. You could note warning when compiling the project. It happens because of `timex` and `tzdata` (last versions) incompatibility. 
