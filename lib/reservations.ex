@@ -17,47 +17,72 @@ defmodule Reservations do
       |> Enum.take(1)
       |> Enum.map(&BasedParser.parse(&1))
       |> get_based()
+      |> List.first()
 
     segment_list =
       lines
       |> Enum.filter(&String.starts_with?(&1, "SEGMENT:"))
       |> Enum.map(&String.replace_leading(&1, "SEGMENT: ", ""))
       |> Enum.map(&parse_segment(String.starts_with?(&1, "Hotel"), &1))
+      |> Enum.sort_by(& &1.start_datetime, NaiveDateTime)
+      |> Enum.reverse()
+      |> group_segments([], nil, nil, based)
+      |> Enum.group_by(& &1.trip)
 
-    sorted_segments = Enum.sort_by(segment_list, & &1.start_datetime, NaiveDateTime)
-
-    grouped_segments = group_segments(Enum.reverse(sorted_segments), [], nil, nil)
-
-    IO.inspect(sorted_segments, label: "sorted_segments")
-    IO.inspect(grouped_segments, label: "grouped_segments")
-    IO.inspect(based, label: "BASED")
+    expose(segment_list)
   end
 
-  defp group_segments([], result_list, _, _), do: result_list
+  defp expose(trip_list) do
+    Enum.map(trip_list, fn {trip, reserves} ->
+      IO.puts("TRIP to #{trip}")
 
-  defp group_segments([head | tail], result_list, _, _) when length(result_list) == 0 do
-    destination = String.to_atom(head.destination)
-    group_segments(tail, [%{destination => head} | result_list], head.start_datetime, destination)
+      Enum.map(reserves, fn res ->
+        if res.type == "Hotel", do: print_room_line(res), else: print_trip_line(res)
+      end)
+
+      IO.puts("\r")
+    end)
   end
 
-  defp group_segments([head | tail], result_list, prev_segment_datetime, trip_place) do
+  defp group_segments([], result_list, _, _, _), do: result_list
+
+  defp group_segments([head | tail], result_list, _, _, based) when length(result_list) == 0 do
+    destination = head.destination
+
+    group_segments(
+      tail,
+      [Map.put(head, :trip, destination) | result_list],
+      head.start_datetime,
+      destination,
+      based
+    )
+  end
+
+  defp group_segments([head | tail], result_list, prev_segment_datetime, trip_place, based) do
     if abs(Timex.diff(head.start_datetime, prev_segment_datetime, :day)) <= 7 do
       destination =
         if abs(Timex.diff(head.end_datetime, prev_segment_datetime, :hours)) <= 24 do
           trip_place
         else
-          String.to_atom(head.destination)
+          head.destination
         end
 
-      group_segments(tail, [%{destination => head} | result_list], head.start_datetime, destination)
-    else
-
-      destination = if head.destination == "SVQ", do: String.to_atom(head.origin), else: String.to_atom(head.destination)
       group_segments(
         tail,
-        [%{destination => head} | result_list],
+        [Map.put(head, :trip, destination) | result_list],
         head.start_datetime,
-        destination
+        destination,
+        based
+      )
+    else
+      destination = if head.destination == based, do: head.origin, else: head.destination
+
+      group_segments(
+        tail,
+        [Map.put(head, :trip, destination) | result_list],
+        head.start_datetime,
+        destination,
+        based
       )
     end
   end
@@ -65,7 +90,7 @@ defmodule Reservations do
   defp get_based([based_list | _]) do
     case based_list do
       {:ok, based, _, _, _, _} -> based
-      _ -> nil
+      _ -> []
     end
   end
 
@@ -90,7 +115,8 @@ defmodule Reservations do
         %{
           type: type,
           origin: origin,
-          start_datetime: Timex.parse!("#{start_date} #{start_time}", "{YYYY}-{0M}-{0D} {h24}:{m}"),
+          start_datetime:
+            Timex.parse!("#{start_date} #{start_time}", "{YYYY}-{0M}-{0D} {h24}:{m}"),
           destination: destination,
           end_datetime: Timex.parse!("#{start_date} #{end_time}", "{YYYY}-{0M}-{0D} {h24}:{m}")
         }
@@ -98,5 +124,17 @@ defmodule Reservations do
       {:error, _} ->
         nil
     end
+  end
+
+  defp print_room_line(res) do
+    IO.puts(
+      "#{res.type} at #{res.origin} on #{Timex.format!(res.start_datetime, "{YYYY}-{0M}-{0D}")} to #{Timex.format!(res.end_datetime, "{YYYY}-{0M}-{0D}")}"
+    )
+  end
+
+  defp print_trip_line(res) do
+    IO.puts(
+      "#{res.type} from #{res.origin} to #{res.destination} at #{Timex.format!(res.start_datetime, "{YYYY}-{0M}-{0D} {h24}:{m}")} to #{Timex.format!(res.end_datetime, "{h24}:{m}")}"
+    )
   end
 end
