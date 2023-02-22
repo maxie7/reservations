@@ -105,3 +105,7 @@ If you need to use Timex from within an escript, add `{:tzdata, "~> 0.1.8", over
 If your build still throws an error after this, try removing the `_build` and `deps` folder. Then execute `mix deps.unlock tzdata` and `mix deps.get`.
 
 P.S. You could note warning when compiling the project. It happens because of `timex` and `tzdata` (last versions) incompatibility. 
+
+
+
+![reservations_output](https://user-images.githubusercontent.com/15796607/220552984-ae5be820-3e7b-433d-b167-785a88c5be78.png)
