@@ -62,7 +62,7 @@ Take into account the following aspects:
 
 ## Solution
 
-There are different approaches could be used to solve the current problem like regular expressions, binary pattern matching or parser combinators. The last one has various libs: `NimbleParsec`, `Combine`, `Ergo`.
+Different approaches could be used to solve the current problem like regular expressions, binary pattern matching or parser combinators. The last one has various libs: `NimbleParsec`, `Combine`, `Ergo`.
 
 We'll use the NimbleParsec because it's simple, fast and pretty well known library in Elixir community.
 
