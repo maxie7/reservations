@@ -3,36 +3,75 @@ defmodule Reservations do
   The main module for processing `Reservations`.
   """
 
-  alias Reservations.BasedParser
-  alias Reservations.SegmentRoomParser
-  alias Reservations.SegmentTripParser
-
-  @hotel "Hotel"
-
   @spec process_file(String.t() | {:error, term()} | :eof | any()) :: any()
   def process_file(text) do
     lines = String.split(text, ~r{(\r\r|\n|\r)})
 
+    based_chunk_fun = &based_logic(&1, &2)
+    segment_chunk_fun = &chunk_logic(&1, &2)
+    after_fun = & {:cont, &1, nil}
+
     based =
       lines
-      |> Enum.filter(&String.starts_with?(&1, "BASED:"))
-      |> Enum.map(&String.replace_leading(&1, "BASED: ", ""))
-      |> Enum.take(1)
-      |> Enum.map(&BasedParser.parse(&1))
-      |> get_based()
+      |> Enum.chunk_while([], based_chunk_fun, after_fun)
+      |> List.flatten()
       |> List.first()
 
     segment_list =
       lines
-      |> Enum.filter(&String.starts_with?(&1, "SEGMENT:"))
-      |> Enum.map(&String.replace_leading(&1, "SEGMENT: ", ""))
-      |> Enum.map(&parse_segment(String.starts_with?(&1, @hotel), &1))
+      |> Enum.chunk_while([], segment_chunk_fun, after_fun)
+      |> List.flatten()
       |> Enum.sort_by(& &1.start_datetime, NaiveDateTime)
       |> Enum.reverse()
       |> group_segments([], nil, nil, based)
       |> Enum.group_by(& &1.trip)
 
+#    IO.inspect segment_l, label: "SEGMENT L: "
+
     expose(segment_list)
+  end
+
+  defp based_logic(<< "BASED: ", based::binary-size(3), _rest::binary >>, acc) do
+    {:cont, [based | acc]}
+  end
+
+  defp based_logic(_, acc), do: {:cont, acc}
+
+  defp chunk_logic(<< "SEGMENT: Flight ", origin::binary-size(3), " ", start_dt::binary-size(16), " -> ", dest::binary-size(3), " ", end_time::binary >>, acc) do
+    segment_map = get_trip_map("Flight", origin, start_dt, dest, end_time)
+    {:cont, [segment_map | acc]}
+  end
+
+  defp chunk_logic(<< "SEGMENT: Train ", origin::binary-size(3), " ", start_dt::binary-size(16), " -> ", dest::binary-size(3), " ", end_time::binary >>, acc) do
+    segment_map = get_trip_map("Train", origin, start_dt, dest, end_time)
+    {:cont, [segment_map | acc]}
+  end
+
+  defp chunk_logic(<< "SEGMENT: Hotel ", origin::binary-size(3), " ", start_dt::binary-size(10), " -> ", end_date::binary >>, acc) do
+    segment_map = %{
+      type: "Hotel",
+      origin: origin,
+      # check in in hotels is usually until midnight
+      start_datetime: NaiveDateTime.from_iso8601!(start_dt <> " 23:59:59"),
+      # check out in hotels is usually until afternoon
+      end_datetime: NaiveDateTime.from_iso8601!(end_date <> " 11:59:59")
+    }
+
+    {:cont, [segment_map | acc]}
+  end
+
+  defp chunk_logic(_el, acc), do: {:cont, acc}
+
+  defp get_trip_map(trip_type, origin, start_dt, dest, end_time) do
+    start_datetime = NaiveDateTime.from_iso8601!(start_dt <> ":00")
+    trip_date = NaiveDateTime.to_date(start_datetime)
+    %{
+      type: trip_type,
+      origin: origin,
+      start_datetime: start_datetime,
+      destination: dest,
+      end_datetime:  NaiveDateTime.new!(trip_date, Time.from_iso8601!(end_time <> ":00"))
+    }
   end
 
   @spec expose(map) :: any
@@ -47,18 +86,18 @@ defmodule Reservations do
   @spec expose_reserves(list) :: [any()]
   defp expose_reserves(reserves) do
     Enum.map(reserves, fn res ->
-      if res.type == @hotel, do: print_room_line(res), else: print_trip_line(res)
+      if res.type == "Hotel", do: print_room_line(res), else: print_trip_line(res)
     end)
   end
 
   defp group_segments([], result_list, _, _, _), do: result_list
 
-  defp group_segments([head | tail], result_list, _, _, based) when result_list == [] do
+  defp group_segments([head | tail], [], _, _, based) do
     destination = head.destination
 
     group_segments(
       tail,
-      [Map.put(head, :trip, destination) | result_list],
+      [Map.put(head, :trip, destination) | []],
       head.start_datetime,
       destination,
       based
@@ -66,10 +105,10 @@ defmodule Reservations do
   end
 
   defp group_segments([head | tail], result_list, prev_segment_datetime, trip_place, based) do
-    if abs(Timex.diff(head.start_datetime, prev_segment_datetime, :day)) <= 7 do
+    if abs(NaiveDateTime.diff(head.start_datetime, prev_segment_datetime, :day)) <= 7 do
       destination =
         get_destination(
-          abs(Timex.diff(head.end_datetime, prev_segment_datetime, :hours)) <= 24,
+          abs(NaiveDateTime.diff(head.end_datetime, prev_segment_datetime, :hour)) <= 24,
           trip_place,
           head
         )
@@ -94,58 +133,19 @@ defmodule Reservations do
     end
   end
 
-  defp get_based([based_list | _]) do
-    case based_list do
-      {:ok, based, _, _, _, _} -> based
-      _ -> []
-    end
-  end
-
   @spec get_destination(boolean, binary, atom | binary | map) :: binary
   defp get_destination(true, trip_place, _), do: trip_place
   defp get_destination(_, _, head), do: head.destination
 
-  defp parse_segment(true, segment) do
-    case SegmentRoomParser.parse(segment) do
-      {:ok, [type, origin, start_date, end_date], _, _, _, _} ->
-        %{
-          type: type,
-          origin: origin,
-          start_datetime: Timex.parse!("#{start_date} 23:59", "{YYYY}-{0M}-{0D} {h24}:{m}"),
-          end_datetime: Timex.parse!(end_date, "{YYYY}-{0M}-{0D}") |> Timex.to_date()
-        }
-
-      _ ->
-        nil
-    end
-  end
-
-  defp parse_segment(_, segment) do
-    case SegmentTripParser.parse(segment) do
-      {:ok, [type, origin, start_date, start_time, destination, end_time], _, _, _, _} ->
-        %{
-          type: type,
-          origin: origin,
-          start_datetime:
-            Timex.parse!("#{start_date} #{start_time}", "{YYYY}-{0M}-{0D} {h24}:{m}"),
-          destination: destination,
-          end_datetime: Timex.parse!("#{start_date} #{end_time}", "{YYYY}-{0M}-{0D} {h24}:{m}")
-        }
-
-      _ ->
-        nil
-    end
-  end
-
   defp print_room_line(res) do
     IO.puts(
-      "#{res.type} at #{res.origin} on #{Timex.format!(res.start_datetime, "{YYYY}-{0M}-{0D}")} to #{Timex.format!(res.end_datetime, "{YYYY}-{0M}-{0D}")}"
+      "#{res.type} at #{res.origin} on #{Date.to_string(NaiveDateTime.to_date(res.start_datetime))} to #{Date.to_string(NaiveDateTime.to_date(res.end_datetime))}"
     )
   end
 
   defp print_trip_line(res) do
     IO.puts(
-      "#{res.type} from #{res.origin} to #{res.destination} at #{Timex.format!(res.start_datetime, "{YYYY}-{0M}-{0D} {h24}:{m}")} to #{Timex.format!(res.end_datetime, "{h24}:{m}")}"
+      "#{res.type} from #{res.origin} to #{res.destination} at #{NaiveDateTime.to_string(res.start_datetime) |> String.replace_suffix(":00", "")} to #{Time.to_string(NaiveDateTime.to_time(res.end_datetime)) |> String.replace_suffix(":00", "")}"
     )
   end
 end
