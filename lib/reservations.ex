@@ -9,7 +9,7 @@ defmodule Reservations do
 
     based_chunk_fun = &based_logic(&1, &2)
     segment_chunk_fun = &chunk_logic(&1, &2)
-    after_fun = & {:cont, &1, nil}
+    after_fun = &{:cont, &1, nil}
 
     based =
       lines
@@ -26,28 +26,40 @@ defmodule Reservations do
       |> group_segments([], nil, nil, based)
       |> Enum.group_by(& &1.trip)
 
-#    IO.inspect segment_l, label: "SEGMENT L: "
+    #    IO.inspect segment_l, label: "SEGMENT L: "
 
     expose(segment_list)
   end
 
-  defp based_logic(<< "BASED: ", based::binary-size(3), _rest::binary >>, acc) do
+  defp based_logic(<<"BASED: ", based::binary-size(3), _rest::binary>>, acc) do
     {:cont, [based | acc]}
   end
 
   defp based_logic(_, acc), do: {:cont, acc}
 
-  defp chunk_logic(<< "SEGMENT: Flight ", origin::binary-size(3), " ", start_dt::binary-size(16), " -> ", dest::binary-size(3), " ", end_time::binary >>, acc) do
+  defp chunk_logic(
+         <<"SEGMENT: Flight ", origin::binary-size(3), " ", start_dt::binary-size(16), " -> ",
+           dest::binary-size(3), " ", end_time::binary>>,
+         acc
+       ) do
     segment_map = get_trip_map("Flight", origin, start_dt, dest, end_time)
     {:cont, [segment_map | acc]}
   end
 
-  defp chunk_logic(<< "SEGMENT: Train ", origin::binary-size(3), " ", start_dt::binary-size(16), " -> ", dest::binary-size(3), " ", end_time::binary >>, acc) do
+  defp chunk_logic(
+         <<"SEGMENT: Train ", origin::binary-size(3), " ", start_dt::binary-size(16), " -> ",
+           dest::binary-size(3), " ", end_time::binary>>,
+         acc
+       ) do
     segment_map = get_trip_map("Train", origin, start_dt, dest, end_time)
     {:cont, [segment_map | acc]}
   end
 
-  defp chunk_logic(<< "SEGMENT: Hotel ", origin::binary-size(3), " ", start_dt::binary-size(10), " -> ", end_date::binary >>, acc) do
+  defp chunk_logic(
+         <<"SEGMENT: Hotel ", origin::binary-size(3), " ", start_dt::binary-size(10), " -> ",
+           end_date::binary>>,
+         acc
+       ) do
     segment_map = %{
       type: "Hotel",
       origin: origin,
@@ -65,12 +77,13 @@ defmodule Reservations do
   defp get_trip_map(trip_type, origin, start_dt, dest, end_time) do
     start_datetime = NaiveDateTime.from_iso8601!(start_dt <> ":00")
     trip_date = NaiveDateTime.to_date(start_datetime)
+
     %{
       type: trip_type,
       origin: origin,
       start_datetime: start_datetime,
       destination: dest,
-      end_datetime:  NaiveDateTime.new!(trip_date, Time.from_iso8601!(end_time <> ":00"))
+      end_datetime: NaiveDateTime.new!(trip_date, Time.from_iso8601!(end_time <> ":00"))
     }
   end
 
