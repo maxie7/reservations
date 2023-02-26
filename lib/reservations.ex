@@ -23,7 +23,6 @@ defmodule Reservations do
       |> List.flatten()
       |> Enum.sort_by(& &1.start_datetime, NaiveDateTime)
       |> Enum.reverse()
-#      |> IO.inspect(label: "MAIN FLOW")
       |> group_segments([], nil, nil, based)
       |> Enum.group_by(& &1.trip)
 

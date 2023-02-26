@@ -109,3 +109,9 @@ P.S. You could note warning when compiling the project. It happens because of `t
 
 
 ![reservations_output](https://user-images.githubusercontent.com/15796607/220552984-ae5be820-3e7b-433d-b167-785a88c5be78.png)
+
+### Another Approach
+
+- `Timex` is removed because it has unnecessary deps: `combine`, `getttext`, `tzdata` (and the last one has `hackney` deps)
+- `NibleParsec` (parser combinator) is changed with just binary pattern matching
+- `Enum.chunk_while` is used for processing lines of text file
