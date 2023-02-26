@@ -23,10 +23,9 @@ defmodule Reservations do
       |> List.flatten()
       |> Enum.sort_by(& &1.start_datetime, NaiveDateTime)
       |> Enum.reverse()
+#      |> IO.inspect(label: "MAIN FLOW")
       |> group_segments([], nil, nil, based)
       |> Enum.group_by(& &1.trip)
-
-    #    IO.inspect segment_l, label: "SEGMENT L: "
 
     expose(segment_list)
   end
@@ -63,6 +62,7 @@ defmodule Reservations do
     segment_map = %{
       type: "Hotel",
       origin: origin,
+      destination: origin,
       # check in in hotels is usually until midnight
       start_datetime: NaiveDateTime.from_iso8601!(start_dt <> " 23:59:59"),
       # check out in hotels is usually until afternoon
@@ -106,7 +106,7 @@ defmodule Reservations do
   defp group_segments([], result_list, _, _, _), do: result_list
 
   defp group_segments([head | tail], [], _, _, based) do
-    destination = head.destination
+    destination = get_destination(head, based)
 
     group_segments(
       tail,
@@ -118,13 +118,11 @@ defmodule Reservations do
   end
 
   defp group_segments([head | tail], result_list, prev_segment_datetime, trip_place, based) do
-    if abs(NaiveDateTime.diff(head.start_datetime, prev_segment_datetime, :day)) <= 7 do
+    if less_than_a_week?(prev_segment_datetime, head.start_datetime) do
       destination =
-        get_destination(
-          abs(NaiveDateTime.diff(head.end_datetime, prev_segment_datetime, :hour)) <= 24,
-          trip_place,
-          head
-        )
+        prev_segment_datetime
+        |> less_than_24h?(head.end_datetime)
+        |> get_destination(trip_place, head)
 
       group_segments(
         tail,
@@ -134,7 +132,7 @@ defmodule Reservations do
         based
       )
     else
-      destination = if head.destination == based, do: head.origin, else: head.destination
+      destination = get_destination(head, based)
 
       group_segments(
         tail,
@@ -149,6 +147,18 @@ defmodule Reservations do
   @spec get_destination(boolean, binary, atom | binary | map) :: binary
   defp get_destination(true, trip_place, _), do: trip_place
   defp get_destination(_, _, head), do: head.destination
+
+  @spec get_destination(map, atom) :: binary
+  defp get_destination(segment, based) when based == segment.destination, do: segment.origin
+  defp get_destination(segment, _), do: segment.destination
+
+  defp less_than_24h?(datetime_1, datetime_2) do
+    NaiveDateTime.diff(datetime_1, datetime_2, :hour) <= 24
+  end
+
+  defp less_than_a_week?(datetime_1, datetime_2) do
+    NaiveDateTime.diff(datetime_1, datetime_2, :day) <= 7
+  end
 
   defp print_room_line(res) do
     IO.puts(
