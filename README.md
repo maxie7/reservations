@@ -115,3 +115,6 @@ P.S. You could note warning when compiling the project. It happens because of `t
 - `Timex` is removed because it has unnecessary deps: `combine`, `getttext`, `tzdata` (and the last one has `hackney` deps)
 - `NibleParsec` (parser combinator) is changed with just binary pattern matching
 - `Enum.chunk_while` is used for processing lines of text file
+
+![reservations_output2](https://user-images.githubusercontent.com/15796607/221406527-ddbbbc3c-651f-4109-bff0-2fc3dbcd9e80.png)
+
